@@ -1,0 +1,4 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"><uses-permission android:name="android.permission.INTERNET"/>
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE"/><application android:theme="@style/AppTheme" android:label="@string/app_name" android:icon="@drawable/ic_launcher_foreground" android:usesCleartextTraffic="false" android:supportsRtl="true"><activity android:name="id.ganicahyo.agroiot.SettingsActivity" android:exported="false"/>
+        <activity android:name="id.ganicahyo.agroiot.MainActivity" android:screenOrientation="portrait" android:exported="true"><intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter></activity></application></manifest>

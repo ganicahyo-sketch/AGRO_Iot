@@ -1,0 +1,116 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="root"
+    android:layout_width="match_parent" android:layout_height="match_parent"
+    android:orientation="vertical" android:background="@color/navy950" android:paddingTop="4dp">
+
+    <ScrollView android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:fillViewport="true" android:clipToPadding="false">
+        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:paddingStart="8dp" android:paddingEnd="8dp" android:paddingBottom="8dp">
+
+            <!-- Scenic banner, editable title is supplied from Settings -->
+            <FrameLayout android:layout_width="match_parent" android:layout_height="94dp" android:background="@drawable/bg_panel" android:clipToOutline="true">
+                <ImageView android:layout_width="match_parent" android:layout_height="match_parent" android:src="@drawable/station_banner" android:scaleType="centerCrop" android:contentDescription="Ilustrasi stasiun cuaca"/>
+                <View android:layout_width="match_parent" android:layout_height="match_parent" android:background="#40102030"/>
+                <LinearLayout android:layout_width="match_parent" android:layout_height="match_parent" android:gravity="center_vertical" android:orientation="horizontal" android:paddingStart="9dp" android:paddingEnd="6dp">
+                    <ImageView android:layout_width="54dp" android:layout_height="54dp" android:src="@drawable/ic_launcher_foreground" android:contentDescription="Logo stasiun cuaca"/>
+                    <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical" android:paddingStart="7dp" android:paddingEnd="2dp">
+                        <TextView android:id="@+id/stationTitle" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="STASIUN CUACA DESA TURUS" android:textColor="@color/text" android:textSize="18sp" android:textStyle="bold" android:maxLines="2" android:ellipsize="end"/>
+                        <TextView android:id="@+id/stationTagline" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Data Cuaca untuk Pertanian yang Lebih Baik" android:textColor="#E6F3FA" android:textSize="10sp" android:maxLines="2"/>
+                    </LinearLayout>
+                    <LinearLayout android:layout_width="wrap_content" android:layout_height="wrap_content" android:orientation="vertical">
+                        <TextView android:id="@+id/settingsButton" android:layout_width="36dp" android:layout_height="36dp" android:gravity="center" android:text="⚙" android:textColor="@color/text" android:textSize="23sp" android:background="@drawable/bg_chip"/>
+                        <TextView android:id="@+id/downloadButton" android:layout_width="36dp" android:layout_height="32dp" android:layout_marginTop="3dp" android:gravity="center" android:text="↓ CSV" android:textColor="@color/cyan" android:textStyle="bold" android:textSize="9sp" android:background="@drawable/bg_chip"/>
+                    </LinearLayout>
+                </LinearLayout>
+            </FrameLayout>
+
+            <!-- Date/time and last access -->
+            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="7dp" android:orientation="vertical" android:background="@drawable/bg_panel" android:padding="12dp">
+                <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal">
+                    <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1.12" android:orientation="vertical" android:paddingEnd="8dp">
+                        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="▦  Hari / Tanggal / Jam (WIB)" android:textColor="#BCD0E0" android:textSize="11sp"/>
+                        <TextView android:id="@+id/date" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:text="Hari, 00 Bulan 0000" android:textColor="@color/text" android:textStyle="bold" android:textSize="15sp"/>
+                        <TextView android:id="@+id/time" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="00:00:00" android:textColor="@color/text" android:textStyle="bold" android:textSize="25sp"/>
+                    </LinearLayout>
+                    <View android:layout_width="1dp" android:layout_height="74dp" android:background="#43657D"/>
+                    <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical" android:paddingStart="10dp">
+                        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="◉  Terakhir Data ThingSpeak" android:textColor="#BCD0E0" android:textSize="10sp"/>
+                        <TextView android:id="@+id/dataTime" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="3dp" android:text="--" android:textColor="@color/text" android:textStyle="bold" android:textSize="12sp"/>
+                        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="7dp" android:text="⟳  Terakhir Akses Aplikasi" android:textColor="#BCD0E0" android:textSize="10sp"/>
+                        <TextView android:id="@+id/access" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="3dp" android:text="--" android:textColor="@color/text" android:textStyle="bold" android:textSize="12sp"/>
+                    </LinearLayout>
+                </LinearLayout>
+                <View android:layout_width="match_parent" android:layout_height="1dp" android:layout_marginTop="9dp" android:layout_marginBottom="8dp" android:background="#31566F"/>
+                <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal">
+                    <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical">
+                        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Mode" android:textColor="@color/muted" android:textSize="10sp"/>
+                        <TextView android:id="@+id/netMode" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="INTERNET" android:textColor="@color/text" android:textStyle="bold" android:textSize="13sp"/>
+                    </LinearLayout>
+                    <View android:layout_width="1dp" android:layout_height="34dp" android:background="#43657D"/>
+                    <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical" android:paddingStart="9dp">
+                        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="RSSI Wi-Fi" android:textColor="@color/muted" android:textSize="10sp"/>
+                        <TextView android:id="@+id/rssi" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="-- dBm" android:textColor="@color/text" android:textStyle="bold" android:textSize="13sp"/>
+                    </LinearLayout>
+                    <View android:layout_width="1dp" android:layout_height="34dp" android:background="#43657D"/>
+                    <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1.25" android:orientation="vertical" android:paddingStart="9dp">
+                        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="IP Address" android:textColor="@color/muted" android:textSize="10sp"/>
+                        <TextView android:id="@+id/channel" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="--" android:textColor="@color/text" android:textStyle="bold" android:textSize="13sp" android:maxLines="1" android:ellipsize="end"/>
+                    </LinearLayout>
+                </LinearLayout>
+            </LinearLayout>
+
+            <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="11dp" android:layout_marginBottom="2dp" android:text="DATA PENGUKURAN" android:textColor="@color/cyan" android:textStyle="bold" android:textSize="10sp" android:letterSpacing="0.14"/>
+            <GridLayout android:id="@+id/grid" android:layout_width="match_parent" android:layout_height="wrap_content" android:columnCount="2" android:useDefaultMargins="false"/>
+
+            <!-- Weather and heat summary -->
+            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="6dp" android:background="@drawable/bg_panel" android:padding="11dp" android:orientation="horizontal" android:gravity="center_vertical">
+                <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical">
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="☁  PRAKIRAAN CUACA" android:textColor="#BCD0E0" android:textSize="10sp"/>
+                    <TextView android:id="@+id/weather" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Menunggu data" android:textColor="@color/text" android:textStyle="bold" android:textSize="16sp"/>
+                </LinearLayout>
+                <View android:layout_width="1dp" android:layout_height="40dp" android:background="#43657D"/>
+                <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="0.78" android:orientation="vertical" android:paddingStart="10dp">
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="♨  STATUS PANAS" android:textColor="#BCD0E0" android:textSize="10sp"/>
+                    <TextView android:id="@+id/heat" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="--" android:textColor="@color/green" android:textStyle="bold" android:textSize="14sp"/>
+                </LinearLayout>
+            </LinearLayout>
+
+            <!-- Generic data-source diagnostics, matching the reference's sensor-status strip -->
+            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="6dp" android:background="@drawable/bg_panel" android:paddingTop="10dp" android:paddingBottom="10dp" android:paddingStart="6dp" android:paddingEnd="6dp" android:orientation="horizontal" android:gravity="center_vertical">
+                <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1.1" android:orientation="vertical" android:gravity="center">
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="◉  SUMBER DATA" android:textColor="#BCD0E0" android:textSize="9sp"/>
+                    <TextView android:id="@+id/sourceStatus" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="ThingSpeak" android:textColor="@color/green" android:textStyle="bold" android:textSize="10sp"/>
+                </LinearLayout>
+                <View android:layout_width="1dp" android:layout_height="28dp" android:background="#36566D"/>
+                <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="0.8" android:orientation="vertical" android:gravity="center">
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="HTTPS API" android:textColor="#BCD0E0" android:textSize="9sp"/>
+                    <TextView android:id="@+id/apiStatus" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="WAIT" android:textColor="@color/amber" android:textStyle="bold" android:textSize="10sp"/>
+                </LinearLayout>
+                <View android:layout_width="1dp" android:layout_height="28dp" android:background="#36566D"/>
+                <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="0.8" android:orientation="vertical" android:gravity="center">
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="8 FIELD" android:textColor="#BCD0E0" android:textSize="9sp"/>
+                    <TextView android:id="@+id/fieldStatus" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="--/8" android:textColor="@color/green" android:textStyle="bold" android:textSize="10sp"/>
+                </LinearLayout>
+                <View android:layout_width="1dp" android:layout_height="28dp" android:background="#36566D"/>
+                <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="0.9" android:orientation="vertical" android:gravity="center">
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="AUTO UPDATE" android:textColor="#BCD0E0" android:textSize="9sp"/>
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="30 DETIK" android:textColor="@color/green" android:textStyle="bold" android:textSize="10sp"/>
+                </LinearLayout>
+            </LinearLayout>
+
+            <!-- Persistent bottom status panel -->
+            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="6dp" android:background="@drawable/bg_panel" android:padding="9dp" android:orientation="horizontal" android:gravity="center_vertical">
+                <View android:id="@+id/statusDot" android:layout_width="12dp" android:layout_height="12dp" android:background="@drawable/bg_status_dot"/>
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginStart="8dp" android:text="STATUS" android:textColor="#BCD0E0" android:textSize="10sp"/>
+                <TextView android:id="@+id/status" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:paddingStart="8dp" android:text="MENYIAPKAN" android:textColor="@color/amber" android:textStyle="bold" android:textSize="12sp"/>
+                <TextView android:id="@+id/message" android:layout_width="0dp" android:layout_height="wrap_content" android:visibility="gone"/>
+                <TextView android:id="@+id/refresh" android:layout_width="wrap_content" android:layout_height="38dp" android:gravity="center" android:paddingStart="13dp" android:paddingEnd="13dp" android:text="⟳  PERBARUI SEKARANG" android:textColor="@color/text" android:textStyle="bold" android:textSize="10sp" android:background="@drawable/bg_button"/>
+            </LinearLayout>
+
+            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="5dp" android:paddingTop="5dp" android:paddingBottom="7dp" android:orientation="vertical" android:gravity="center">
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="AGRO-IoT  •  VERSI 3.0.0" android:textColor="@color/cyan" android:textStyle="bold" android:textSize="10sp" android:letterSpacing="0.08"/>
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="2dp" android:text="ganicahyo@2026" android:textColor="@color/muted" android:textSize="10sp"/>
+            </LinearLayout>
+        </LinearLayout>
+    </ScrollView>
+</LinearLayout>

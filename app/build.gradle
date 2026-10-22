@@ -1,0 +1,28 @@
+plugins { id 'com.android.application' }
+
+android {
+    namespace 'id.ganicahyo.agroiot'
+    compileSdk 36
+
+    defaultConfig {
+        applicationId 'id.ganicahyo.agroiot'
+        minSdk 26
+        targetSdk 36
+        versionCode 3
+        versionName '3.0.0'
+    }
+
+    buildTypes {
+        debug { minifyEnabled false }
+        release {
+            minifyEnabled false
+            shrinkResources false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
