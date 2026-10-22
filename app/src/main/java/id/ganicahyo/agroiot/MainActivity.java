@@ -59,8 +59,8 @@ public class MainActivity extends Activity {
     static final long REFRESH_MS = 30_000L;
     private static final long DAILY_STATS_REFRESH_MS = 5 * 60_000L;
     private static final int DAILY_STATS_PAGE_SIZE = 8000;
-    private static final int DAILY_STATS_MAX_ENTRIES = 160000;
-
+    private static final int DAILY_STATS_ALGORITHM_VERSION = 2;
+    
     private static final int PARAM_CUSTOM = -1;
     private static final int PARAM_UNSET = -2;
     // Parameter preset untuk delapan field ThingSpeak. ET₀ dan Δ tekanan dapat dipetakan ke field mana pun.
@@ -564,22 +564,33 @@ public class MainActivity extends Activity {
         String attemptDateKey = profileKey(slot, "daily_stats_attempt_date");
         String attemptTimeKey = profileKey(slot, "daily_stats_last_attempt");
         String attemptChannelKey = profileKey(slot, "daily_stats_attempt_channel_id");
+        String attemptAlgorithmKey = profileKey(slot, "daily_stats_attempt_algorithm");
         long now = System.currentTimeMillis();
         String lastAttemptDate = prefs.getString(attemptDateKey, "");
         String lastAttemptChannel = prefs.getString(attemptChannelKey, "");
+        int lastAttemptAlgorithm = prefs.getInt(attemptAlgorithmKey, 0);
         long lastAttempt = prefs.getLong(attemptTimeKey, 0L);
-        boolean sameRequestScope = dateKey.equals(lastAttemptDate) && channelId.equals(lastAttemptChannel);
+        boolean sameRequestScope = dateKey.equals(lastAttemptDate)
+                && channelId.equals(lastAttemptChannel)
+                && lastAttemptAlgorithm == DAILY_STATS_ALGORITHM_VERSION;
         if (sameRequestScope && now - lastAttempt < DAILY_STATS_REFRESH_MS) return;
 
         // Catat sebelum antrean agar refresh berikutnya tidak membuat permintaan duplikat.
+        // Nomor algoritma memastikan data kosong yang dicache versi lama segera dihitung ulang.
         prefs.edit().putString(attemptDateKey, dateKey).putString(attemptChannelKey, channelId)
+                .putInt(attemptAlgorithmKey, DAILY_STATS_ALGORITHM_VERSION)
                 .putLong(attemptTimeKey, now).apply();
         try {
             io.execute(() -> fetchAndStoreDailyStats(slot, channelId, key, today));
         } catch (java.util.concurrent.RejectedExecutionException ignored) { }
     }
 
-    /** Mengambil seluruh feed pada hari WIB sekarang, dari 00:00:00 hingga 23:59:59. */
+    /**
+     * Mengambil feed terbaru lalu menyaring tanggal WIB secara lokal.
+     * Jangan memakai parameter "offset" untuk paging: pada API ThingSpeak,
+     * offset adalah offset zona waktu, bukan nomor halaman. Untuk channel dengan
+     * interval update minimum 15 detik, 8000 entri cukup untuk mencakup satu hari.
+     */
     private void fetchAndStoreDailyStats(int slot, String channelId, String key, LocalDate day) {
         try {
             double[] min = new double[8];
@@ -589,48 +600,40 @@ public class MainActivity extends Activity {
             java.util.Arrays.fill(min, Double.POSITIVE_INFINITY);
             java.util.Arrays.fill(max, Double.NEGATIVE_INFINITY);
 
-            String start = day.toString() + " 00:00:00";
-            String end = day.toString() + " 23:59:59";
-            int offset = 0;
-            while (true) {
-                String endpoint = "https://api.thingspeak.com/channels/" + enc(channelId)
-                        + "/feeds.json?results=" + DAILY_STATS_PAGE_SIZE
-                        + "&offset=" + offset
-                        + "&start=" + enc(start).replace("+", "%20")
-                        + "&end=" + enc(end).replace("+", "%20")
-                        + "&timezone=Asia%2FJakarta";
-                if (!key.isEmpty()) endpoint += "&api_key=" + enc(key);
+            String endpoint = "https://api.thingspeak.com/channels/" + enc(channelId)
+                    + "/feeds.json?results=" + DAILY_STATS_PAGE_SIZE
+                    + "&timezone=Asia%2FJakarta";
+            if (!key.isEmpty()) endpoint += "&api_key=" + enc(key);
 
-                JSONObject response;
-                try (InputStream in = openStream(endpoint, 12000, 25000)) {
-                    response = new JSONObject(readAll(in));
-                }
-                JSONArray feeds = response.optJSONArray("feeds");
-                if (feeds == null || feeds.length() == 0) break;
+            JSONObject response;
+            try (InputStream in = openStream(endpoint, 12000, 25000)) {
+                response = new JSONObject(readAll(in));
+            }
+            String apiError = response.optString("error", "").trim();
+            if (!apiError.isEmpty()) throw new java.io.IOException("ThingSpeak: " + apiError);
+            JSONArray feeds = response.optJSONArray("feeds");
+            if (feeds == null) throw new java.io.IOException("Respons statistik ThingSpeak tidak berisi daftar feeds.");
 
-                for (int i = 0; i < feeds.length(); i++) {
-                    JSONObject item = feeds.optJSONObject(i);
-                    if (item == null) continue;
-                    String created = item.optString("created_at", "");
-                    if (!isFeedOnWibDate(created, day)) continue;
-                    for (int f = 0; f < 8; f++) {
-                        String raw = item.optString("field" + (f + 1), "").trim();
-                        if (raw.isEmpty() || raw.equalsIgnoreCase("null") || raw.equals("--")) continue;
-                        try {
-                            double value = Double.parseDouble(raw.replace(',', '.'));
-                            if (Double.isNaN(value) || Double.isInfinite(value)) continue;
-                            if (value < min[f]) min[f] = value;
-                            if (value > max[f]) max[f] = value;
-                            sum[f] += value;
-                            count[f]++;
-                        } catch (NumberFormatException ignored) { /* status teks hujan tidak memiliki statistik numerik */ }
+            int entriesToday = 0;
+            for (int i = 0; i < feeds.length(); i++) {
+                JSONObject item = feeds.optJSONObject(i);
+                if (item == null) continue;
+                String created = item.optString("created_at", "");
+                if (!isFeedOnWibDate(created, day)) continue;
+                entriesToday++;
+                for (int f = 0; f < 8; f++) {
+                    String raw = item.optString("field" + (f + 1), "").trim();
+                    if (raw.isEmpty() || raw.equalsIgnoreCase("null") || raw.equals("--")) continue;
+                    try {
+                        double value = Double.parseDouble(raw.replace(',', '.'));
+                        if (Double.isNaN(value) || Double.isInfinite(value)) continue;
+                        if (value < min[f]) min[f] = value;
+                        if (value > max[f]) max[f] = value;
+                        sum[f] += value;
+                        count[f]++;
+                    } catch (NumberFormatException ignored) {
+                        // Status teks seperti "hujan/tidak hujan" tidak dihitung sebagai angka.
                     }
-                }
-
-                offset += feeds.length();
-                if (feeds.length() < DAILY_STATS_PAGE_SIZE) break;
-                if (offset >= DAILY_STATS_MAX_ENTRIES) {
-                    throw new java.io.IOException("Batas keamanan jumlah data harian tercapai.");
                 }
             }
 
@@ -649,26 +652,39 @@ public class MainActivity extends Activity {
             prefs.edit()
                     .putString(profileKey(slot, "daily_stats_date"), day.toString())
                     .putString(profileKey(slot, "daily_stats_channel_id"), channelId)
+                    .putInt(profileKey(slot, "daily_stats_entries_today"), entriesToday)
+                    .putInt(profileKey(slot, "daily_stats_algorithm"), DAILY_STATS_ALGORITHM_VERSION)
                     .putString(profileKey(slot, "daily_stats"), json)
+                    .putString(profileKey(slot, "daily_stats_error"), "")
                     .apply();
             runOnUiThread(() -> {
                 if (!isFinishing() && slot == activeSlot()) applyDailyStatsFromCache(slot);
             });
-        } catch (Exception ignored) {
-            // Kegagalan statistik tidak mengganggu nilai realtime. Akan dicoba lagi pada refresh berikutnya.
+        } catch (Exception error) {
+            // Simpan penyebab yang aman untuk diagnosis, dan biarkan percobaan ulang berikutnya berjalan.
+            prefs.edit().putString(profileKey(slot, "daily_stats_error"), safeMessage(error)).apply();
+            runOnUiThread(() -> {
+                if (!isFinishing() && slot == activeSlot()) applyDailyStatsFromCache(slot);
+            });
         }
     }
 
     private boolean isFeedOnWibDate(String createdAt, LocalDate day) {
         if (createdAt == null || createdAt.trim().isEmpty()) return false;
+        String value = createdAt.trim();
         try {
-            return Instant.parse(createdAt).atZone(WIB).toLocalDate().equals(day);
+            return Instant.parse(value).atZone(WIB).toLocalDate().equals(day);
         } catch (Exception ignored) {
             try {
-                return ZonedDateTime.parse(createdAt).withZoneSameInstant(WIB).toLocalDate().equals(day);
+                return ZonedDateTime.parse(value).withZoneSameInstant(WIB).toLocalDate().equals(day);
             } catch (Exception ignoredAgain) {
-                try { return LocalDateTime.parse(createdAt).toLocalDate().equals(day); }
-                catch (Exception ignoredFinally) { return false; }
+                try { return LocalDateTime.parse(value).atZone(WIB).toLocalDate().equals(day); }
+                catch (Exception ignoredFinally) {
+                    try {
+                        DateTimeFormatter format = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss", Locale.US);
+                        return LocalDateTime.parse(value, format).atZone(WIB).toLocalDate().equals(day);
+                    } catch (Exception ignoredSpace) { return false; }
+                }
             }
         }
     }
@@ -679,7 +695,9 @@ public class MainActivity extends Activity {
         String statsDate = prefs.getString(profileKey(slot, "daily_stats_date"), "");
         String statsChannel = prefs.getString(profileKey(slot, "daily_stats_channel_id"), "");
         JSONArray stats = null;
-        if (today.equals(statsDate) && idFor(slot).equals(statsChannel)) {
+        int storedAlgorithm = prefs.getInt(profileKey(slot, "daily_stats_algorithm"), 0);
+        if (today.equals(statsDate) && idFor(slot).equals(statsChannel)
+                && storedAlgorithm == DAILY_STATS_ALGORITHM_VERSION) {
             try { stats = new JSONArray(prefs.getString(profileKey(slot, "daily_stats"), "[]")); }
             catch (Exception ignored) { }
         }
