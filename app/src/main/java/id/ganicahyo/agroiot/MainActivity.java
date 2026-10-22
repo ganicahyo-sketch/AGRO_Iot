@@ -43,6 +43,7 @@ import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
@@ -56,6 +57,9 @@ public class MainActivity extends Activity {
     static final int REQUEST_CREATE_CSV = 720;
     static final ZoneId WIB = ZoneId.of("Asia/Jakarta");
     static final long REFRESH_MS = 30_000L;
+    private static final long DAILY_STATS_REFRESH_MS = 5 * 60_000L;
+    private static final int DAILY_STATS_PAGE_SIZE = 8000;
+    private static final int DAILY_STATS_MAX_ENTRIES = 160000;
 
     private static final int PARAM_CUSTOM = -1;
     private static final int PARAM_UNSET = -2;
@@ -99,6 +103,7 @@ public class MainActivity extends Activity {
     private final TextView[] labelViews = new TextView[8];
     private final TextView[] unitViews = new TextView[8];
     private final TextView[] iconViews = new TextView[8];
+    private final TextView[] dailyStatsViews = new TextView[8];
     private boolean requestRunning = false;
     private long pendingAccessMillis = 0L;
     private String pendingCsvStart = "", pendingCsvEnd = "";
@@ -182,8 +187,8 @@ public class MainActivity extends Activity {
         for (int i = 0; i < 8; i++) {
             final int idx = i;
             LinearLayout card = new LinearLayout(this);
-            card.setOrientation(LinearLayout.HORIZONTAL);
-            card.setGravity(Gravity.CENTER_VERTICAL);
+            card.setOrientation(LinearLayout.VERTICAL);
+            card.setGravity(Gravity.CENTER_HORIZONTAL | Gravity.CENTER_VERTICAL);
             card.setPadding(dp(9), dp(8), dp(8), dp(8));
             GradientDrawable bg = new GradientDrawable();
             bg.setColors(new int[]{blend(CARD_FILL[i], CARD_STROKE[i], 0.28f), CARD_FILL[i]});
@@ -193,24 +198,30 @@ public class MainActivity extends Activity {
             card.setBackground(bg);
             GridLayout.LayoutParams cp = new GridLayout.LayoutParams();
             cp.width = 0;
-            cp.height = dp(100);
+            cp.height = dp(132);
             cp.columnSpec = GridLayout.spec(i % 2, 1f);
             cp.rowSpec = GridLayout.spec(i / 2);
             cp.setMargins(dp(3), dp(3), dp(3), dp(3));
             card.setLayoutParams(cp);
 
+            // Baris utama memuat ikon, nama parameter, dan angka realtime.
+            // Baris statistik terpisah di bawahnya memakai lebar penuh kartu agar
+            // Min, Maks, dan Rerata dapat terbaca dalam satu baris.
+            LinearLayout mainRow = new LinearLayout(this);
+            mainRow.setOrientation(LinearLayout.HORIZONTAL);
+            mainRow.setGravity(Gravity.CENTER_VERTICAL);
             iconViews[i] = text(PARAM_ICONS[DEFAULT_PARAM_BY_FIELD[i]], 25, CARD_STROKE[i], true);
             iconViews[i].setGravity(Gravity.CENTER);
             iconViews[i].setContentDescription("Pilih parameter field " + (i + 1));
             iconViews[i].setOnClickListener(v -> chooseFieldParameter(idx));
-            card.addView(iconViews[i], new LinearLayout.LayoutParams(dp(48), -1));
+            mainRow.addView(iconViews[i], new LinearLayout.LayoutParams(dp(44), -1));
 
             LinearLayout body = new LinearLayout(this);
             body.setOrientation(LinearLayout.VERTICAL);
             body.setGravity(Gravity.CENTER_VERTICAL);
             LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(0, -1, 1f);
-            bp.leftMargin = dp(5);
-            card.addView(body, bp);
+            bp.leftMargin = dp(4);
+            mainRow.addView(body, bp);
 
             LinearLayout top = new LinearLayout(this);
             top.setGravity(Gravity.CENTER_VERTICAL);
@@ -239,6 +250,19 @@ public class MainActivity extends Activity {
             up.leftMargin = dp(3);
             valueRow.addView(unitViews[i], up);
             body.addView(valueRow);
+
+            // Statistik harian satu baris dengan pemisah agar ringkas namun jelas.
+            // Ukuran font tetap sama dengan nama parameter.
+            card.addView(mainRow, new LinearLayout.LayoutParams(-1, 0, 1f));
+            dailyStatsViews[i] = text("Min -- | Maks -- | Rerata --", 10, 0xFFB7CAD6, false);
+            dailyStatsViews[i].setTextSize(10);
+            dailyStatsViews[i].setSingleLine(true);
+            dailyStatsViews[i].setMaxLines(1);
+            dailyStatsViews[i].setIncludeFontPadding(false);
+            dailyStatsViews[i].setEllipsize(android.text.TextUtils.TruncateAt.END);
+            dailyStatsViews[i].setContentDescription("Statistik harian dari pukul 00:00 sampai 23:59 WIB");
+            card.addView(dailyStatsViews[i], new LinearLayout.LayoutParams(-1, -2));
+
             card.setOnClickListener(v -> chooseFieldParameter(idx));
             card.setContentDescription("Field " + (i + 1) + ". Ketuk kartu untuk memilih parameter; ketuk nilainya untuk memasukkan angka manual.");
             grid.addView(card);
@@ -496,7 +520,7 @@ public class MainActivity extends Activity {
                     }
                 }
                 editor.apply();
-                JSONObject finalMetadata = metadata;
+                scheduleDailyStatsIfDue(slot, channelId, key);
                 runOnUiThread(() -> {
                     if (slot == activeSlot()) {
                         updateHeader();
@@ -533,6 +557,154 @@ public class MainActivity extends Activity {
         String m = e.getMessage(); return m == null || m.trim().isEmpty() ? e.getClass().getSimpleName() : m;
     }
 
+    /** Jadwalkan perhitungan statistik hanya sekali per lima menit untuk profil dan tanggal aktif. */
+    private void scheduleDailyStatsIfDue(int slot, String channelId, String key) {
+        LocalDate today = LocalDate.now(WIB);
+        String dateKey = today.toString();
+        String attemptDateKey = profileKey(slot, "daily_stats_attempt_date");
+        String attemptTimeKey = profileKey(slot, "daily_stats_last_attempt");
+        String attemptChannelKey = profileKey(slot, "daily_stats_attempt_channel_id");
+        long now = System.currentTimeMillis();
+        String lastAttemptDate = prefs.getString(attemptDateKey, "");
+        String lastAttemptChannel = prefs.getString(attemptChannelKey, "");
+        long lastAttempt = prefs.getLong(attemptTimeKey, 0L);
+        boolean sameRequestScope = dateKey.equals(lastAttemptDate) && channelId.equals(lastAttemptChannel);
+        if (sameRequestScope && now - lastAttempt < DAILY_STATS_REFRESH_MS) return;
+
+        // Catat sebelum antrean agar refresh berikutnya tidak membuat permintaan duplikat.
+        prefs.edit().putString(attemptDateKey, dateKey).putString(attemptChannelKey, channelId)
+                .putLong(attemptTimeKey, now).apply();
+        try {
+            io.execute(() -> fetchAndStoreDailyStats(slot, channelId, key, today));
+        } catch (java.util.concurrent.RejectedExecutionException ignored) { }
+    }
+
+    /** Mengambil seluruh feed pada hari WIB sekarang, dari 00:00:00 hingga 23:59:59. */
+    private void fetchAndStoreDailyStats(int slot, String channelId, String key, LocalDate day) {
+        try {
+            double[] min = new double[8];
+            double[] max = new double[8];
+            double[] sum = new double[8];
+            int[] count = new int[8];
+            java.util.Arrays.fill(min, Double.POSITIVE_INFINITY);
+            java.util.Arrays.fill(max, Double.NEGATIVE_INFINITY);
+
+            String start = day.toString() + " 00:00:00";
+            String end = day.toString() + " 23:59:59";
+            int offset = 0;
+            while (true) {
+                String endpoint = "https://api.thingspeak.com/channels/" + enc(channelId)
+                        + "/feeds.json?results=" + DAILY_STATS_PAGE_SIZE
+                        + "&offset=" + offset
+                        + "&start=" + enc(start).replace("+", "%20")
+                        + "&end=" + enc(end).replace("+", "%20")
+                        + "&timezone=Asia%2FJakarta";
+                if (!key.isEmpty()) endpoint += "&api_key=" + enc(key);
+
+                JSONObject response;
+                try (InputStream in = openStream(endpoint, 12000, 25000)) {
+                    response = new JSONObject(readAll(in));
+                }
+                JSONArray feeds = response.optJSONArray("feeds");
+                if (feeds == null || feeds.length() == 0) break;
+
+                for (int i = 0; i < feeds.length(); i++) {
+                    JSONObject item = feeds.optJSONObject(i);
+                    if (item == null) continue;
+                    String created = item.optString("created_at", "");
+                    if (!isFeedOnWibDate(created, day)) continue;
+                    for (int f = 0; f < 8; f++) {
+                        String raw = item.optString("field" + (f + 1), "").trim();
+                        if (raw.isEmpty() || raw.equalsIgnoreCase("null") || raw.equals("--")) continue;
+                        try {
+                            double value = Double.parseDouble(raw.replace(',', '.'));
+                            if (Double.isNaN(value) || Double.isInfinite(value)) continue;
+                            if (value < min[f]) min[f] = value;
+                            if (value > max[f]) max[f] = value;
+                            sum[f] += value;
+                            count[f]++;
+                        } catch (NumberFormatException ignored) { /* status teks hujan tidak memiliki statistik numerik */ }
+                    }
+                }
+
+                offset += feeds.length();
+                if (feeds.length() < DAILY_STATS_PAGE_SIZE) break;
+                if (offset >= DAILY_STATS_MAX_ENTRIES) {
+                    throw new java.io.IOException("Batas keamanan jumlah data harian tercapai.");
+                }
+            }
+
+            JSONArray result = new JSONArray();
+            for (int f = 0; f < 8; f++) {
+                JSONObject stat = new JSONObject();
+                stat.put("count", count[f]);
+                if (count[f] > 0) {
+                    stat.put("min", min[f]);
+                    stat.put("max", max[f]);
+                    stat.put("avg", sum[f] / count[f]);
+                }
+                result.put(stat);
+            }
+            String json = result.toString();
+            prefs.edit()
+                    .putString(profileKey(slot, "daily_stats_date"), day.toString())
+                    .putString(profileKey(slot, "daily_stats_channel_id"), channelId)
+                    .putString(profileKey(slot, "daily_stats"), json)
+                    .apply();
+            runOnUiThread(() -> {
+                if (!isFinishing() && slot == activeSlot()) applyDailyStatsFromCache(slot);
+            });
+        } catch (Exception ignored) {
+            // Kegagalan statistik tidak mengganggu nilai realtime. Akan dicoba lagi pada refresh berikutnya.
+        }
+    }
+
+    private boolean isFeedOnWibDate(String createdAt, LocalDate day) {
+        if (createdAt == null || createdAt.trim().isEmpty()) return false;
+        try {
+            return Instant.parse(createdAt).atZone(WIB).toLocalDate().equals(day);
+        } catch (Exception ignored) {
+            try {
+                return ZonedDateTime.parse(createdAt).withZoneSameInstant(WIB).toLocalDate().equals(day);
+            } catch (Exception ignoredAgain) {
+                try { return LocalDateTime.parse(createdAt).toLocalDate().equals(day); }
+                catch (Exception ignoredFinally) { return false; }
+            }
+        }
+    }
+
+    private void applyDailyStatsFromCache(int slot) {
+        if (dailyStatsViews[0] == null) return;
+        String today = LocalDate.now(WIB).toString();
+        String statsDate = prefs.getString(profileKey(slot, "daily_stats_date"), "");
+        String statsChannel = prefs.getString(profileKey(slot, "daily_stats_channel_id"), "");
+        JSONArray stats = null;
+        if (today.equals(statsDate) && idFor(slot).equals(statsChannel)) {
+            try { stats = new JSONArray(prefs.getString(profileKey(slot, "daily_stats"), "[]")); }
+            catch (Exception ignored) { }
+        }
+        for (int f = 0; f < dailyStatsViews.length; f++) {
+            JSONObject stat = stats == null ? null : stats.optJSONObject(f);
+            int n = stat == null ? 0 : stat.optInt("count", 0);
+            String display;
+            if (n <= 0) {
+                display = "Min -- | Maks -- | Rerata --";
+            } else {
+                display = "Min " + formatStatNumber(stat.optDouble("min", Double.NaN))
+                        + " | Maks " + formatStatNumber(stat.optDouble("max", Double.NaN))
+                        + " | Rerata " + formatStatNumber(stat.optDouble("avg", Double.NaN));
+            }
+            dailyStatsViews[f].setText(display);
+            dailyStatsViews[f].setContentDescription("Statistik harian " + fieldName(slot, f)
+                    + " WIB, 00:00 sampai 23:59: " + display.replace(" | ", ", "));
+        }
+    }
+
+    private String formatStatNumber(double value) {
+        if (Double.isNaN(value) || Double.isInfinite(value)) return "--";
+        return String.format(new Locale("id", "ID"), "%.1f", value);
+    }
+
     private void applyFeed(JSONObject feed, int slot) {
         int present = 0;
         for (int i = 0; i < 8; i++) {
@@ -557,6 +729,7 @@ public class MainActivity extends Activity {
         String forecast = estimateWeather(feed, slot);
         weather.setText(forecast);
         heat.setText(estimateHeat(feed, slot));
+        applyDailyStatsFromCache(slot);
         if (present == 0) showStatus("ONLINE · DATA KOSONG", 0xFFF3B64A, "Channel terhubung tetapi field belum berisi nilai.");
     }
 
@@ -611,6 +784,7 @@ public class MainActivity extends Activity {
             }
             dataTime.setText("Belum ada data ThingSpeak");
         }
+        applyDailyStatsFromCache(slot);
     }
 
     private void showStatus(String state, int color, String detail) {
