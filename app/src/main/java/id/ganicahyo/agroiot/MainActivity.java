@@ -2,6 +2,7 @@ package id.ganicahyo.agroiot;
 
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.app.DatePickerDialog;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
@@ -41,6 +42,7 @@ import java.net.URL;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
@@ -55,12 +57,29 @@ public class MainActivity extends Activity {
     static final ZoneId WIB = ZoneId.of("Asia/Jakarta");
     static final long REFRESH_MS = 30_000L;
 
+    private static final int PARAM_CUSTOM = -1;
+    private static final int PARAM_UNSET = -2;
+    // Parameter preset untuk delapan field ThingSpeak. ET₀ dan Δ tekanan dapat dipetakan ke field mana pun.
+    private static final String[] PARAM_LABELS = {
+            "SUHU UDARA", "KELEMBAPAN UDARA", "TEKANAN UDARA", "DELTA TEKANAN UDARA",
+            "ALTITUDE", "INTENSITAS CAHAYA", "PAR", "VPD", "LAMA PENYINARAN MATAHARI",
+            "ET₀", "KECEPATAN ANGIN", "ARAH ANGIN", "CURAH HUJAN", "HUJAN / TIDAK HUJAN"
+    };
+    private static final String[] PARAM_UNITS = {
+            "°C", "%", "hPa", "hPa", "mdpl", "lux", "µmol/m²/s", "kPa", "jam",
+            "mm/hari", "m/s", "°", "mm", ""
+    };
+    // Ikon visual yang mengikuti parameter; PAR dan ET₀ memakai kombinasi ikon.
+    private static final String[] PARAM_ICONS = {
+            "🌡️", "💧", "◉", "↕", "⛰️", "☀️", "☼🌱", "💧🌡️", "☀️⏱️",
+            "🌱💧", "💨", "🧭", "🌧️", "🌦️"
+    };
     private static final String[] DEFAULT_LABELS = {
-            "SUHU UDARA", "KELEMBABAN UDARA", "TEKANAN UDARA", "ALTITUDE",
-            "INTENSITAS CAHAYA", "PAR", "VPD", "DURASI SINAR MATAHARI"
+            "SUHU UDARA", "KELEMBAPAN UDARA", "TEKANAN UDARA", "ALTITUDE",
+            "INTENSITAS CAHAYA", "PAR", "VPD", "LAMA PENYINARAN MATAHARI"
     };
     private static final String[] DEFAULT_UNITS = {"°C", "%", "hPa", "mdpl", "lux", "µmol/m²/s", "kPa", "jam"};
-    private static final String[] ICONS = {"♨", "♢", "◉", "▲", "☀", "❧", "≋", "◷"};
+    private static final int[] DEFAULT_PARAM_BY_FIELD = {0, 1, 2, 4, 5, 6, 7, 8};
     private static final int[] CARD_FILL = {
             0xFF07314A, 0xFF073923, 0xFF41230D, 0xFF29113F,
             0xFF3D3510, 0xFF063842, 0xFF40131B, 0xFF082650
@@ -79,6 +98,7 @@ public class MainActivity extends Activity {
     private final TextView[] valueViews = new TextView[8];
     private final TextView[] labelViews = new TextView[8];
     private final TextView[] unitViews = new TextView[8];
+    private final TextView[] iconViews = new TextView[8];
     private boolean requestRunning = false;
     private long pendingAccessMillis = 0L;
     private String pendingCsvStart = "", pendingCsvEnd = "";
@@ -179,9 +199,11 @@ public class MainActivity extends Activity {
             cp.setMargins(dp(3), dp(3), dp(3), dp(3));
             card.setLayoutParams(cp);
 
-            TextView icon = text(ICONS[i], 29, CARD_STROKE[i], true);
-            icon.setGravity(Gravity.CENTER);
-            card.addView(icon, new LinearLayout.LayoutParams(dp(43), -1));
+            iconViews[i] = text(PARAM_ICONS[DEFAULT_PARAM_BY_FIELD[i]], 25, CARD_STROKE[i], true);
+            iconViews[i].setGravity(Gravity.CENTER);
+            iconViews[i].setContentDescription("Pilih parameter field " + (i + 1));
+            iconViews[i].setOnClickListener(v -> chooseFieldParameter(idx));
+            card.addView(iconViews[i], new LinearLayout.LayoutParams(dp(48), -1));
 
             LinearLayout body = new LinearLayout(this);
             body.setOrientation(LinearLayout.VERTICAL);
@@ -195,6 +217,8 @@ public class MainActivity extends Activity {
             labelViews[i] = text(defaultLabel(i), 10, 0xFFF4F7F9, true);
             labelViews[i].setMaxLines(2);
             labelViews[i].setEllipsize(android.text.TextUtils.TruncateAt.END);
+            labelViews[i].setOnClickListener(v -> chooseFieldParameter(idx));
+            labelViews[i].setContentDescription("Ketuk untuk mengubah parameter field " + (i + 1));
             top.addView(labelViews[i], new LinearLayout.LayoutParams(0, -2, 1f));
             TextView index = text((i + 1) + "/8", 10, CARD_STROKE[i], true);
             top.addView(index);
@@ -206,6 +230,8 @@ public class MainActivity extends Activity {
             valueViews[i].setSingleLine(true);
             valueViews[i].setTextSize(20);
             valueViews[i].setEllipsize(android.text.TextUtils.TruncateAt.END);
+            valueViews[i].setContentDescription("Ketuk nilai untuk memasukkan nilai manual");
+            valueViews[i].setOnClickListener(v -> showManualValueDialog(idx));
             valueRow.addView(valueViews[i], new LinearLayout.LayoutParams(0, -2, 1f));
             unitViews[i] = text(defaultUnit(i), 9, CARD_STROKE[i], true);
             unitViews[i].setGravity(Gravity.BOTTOM);
@@ -213,6 +239,8 @@ public class MainActivity extends Activity {
             up.leftMargin = dp(3);
             valueRow.addView(unitViews[i], up);
             body.addView(valueRow);
+            card.setOnClickListener(v -> chooseFieldParameter(idx));
+            card.setContentDescription("Field " + (i + 1) + ". Ketuk kartu untuk memilih parameter; ketuk nilainya untuk memasukkan angka manual.");
             grid.addView(card);
         }
     }
@@ -261,23 +289,105 @@ public class MainActivity extends Activity {
         sourceStatus.setText(sourceLabel);
         sourceStatus.setContentDescription("Profil aktif: " + name + ", Channel ID: " + id);
         updateNetworkInfo();
-        for (int i = 0; i < 8; i++) {
-            labelViews[i].setText(fieldName(slot, i));
-            unitViews[i].setText(fieldUnit(slot, i));
-        }
+        for (int i = 0; i < 8; i++) updateFieldPresentation(slot, i);
     }
 
     private String defaultLabel(int i) { return DEFAULT_LABELS[i]; }
     private String defaultUnit(int i) { return DEFAULT_UNITS[i]; }
+
+    private int explicitFieldType(int slot, int field) {
+        return prefs.getInt(profileKey(slot, "f" + field + "_type"), PARAM_UNSET);
+    }
+
+    private String manualFieldName(int slot, int field) {
+        return prefs.getString(profileKey(slot, "f" + field + "_name"), "").trim();
+    }
+
+    private String metadataFieldName(int slot, int field) {
+        return prefs.getString(profileKey(slot, "meta_f" + (field + 1)), "").trim();
+    }
+
     private String fieldName(int slot, int field) {
-        String manual = prefs.getString(profileKey(slot, "f" + field + "_name"), "").trim();
+        int chosen = explicitFieldType(slot, field);
+        if (chosen >= 0 && chosen < PARAM_LABELS.length) return PARAM_LABELS[chosen];
+        String manual = manualFieldName(slot, field);
         if (!manual.isEmpty()) return manual;
-        String meta = prefs.getString(profileKey(slot, "meta_f" + (field + 1)), "").trim();
+        String meta = metadataFieldName(slot, field);
         return meta.isEmpty() ? defaultLabel(field) : meta;
     }
+
     private String fieldUnit(int slot, int field) {
+        int chosen = explicitFieldType(slot, field);
+        if (chosen >= 0 && chosen < PARAM_UNITS.length) return PARAM_UNITS[chosen];
         String unit = prefs.getString(profileKey(slot, "f" + field + "_unit"), "").trim();
+        if (chosen == PARAM_CUSTOM) return unit;
         return unit.isEmpty() ? defaultUnit(field) : unit;
+    }
+
+    private int inferParameterType(String label) {
+        if (label == null) return PARAM_CUSTOM;
+        String s = label.toLowerCase(Locale.ROOT).replace('₀', '0').replace('Δ', 'd').trim();
+        if (s.isEmpty()) return PARAM_CUSTOM;
+        if ((s.contains("status") || s.contains("tidak") || s.contains("rain/no")) && (s.contains("hujan") || s.contains("rain"))) return 13;
+        if (s.contains("et0") || s.contains("evapotransp") || s.contains("evapotranspirasi")) return 9;
+        if (s.contains("delta") || s.startsWith("d tekanan") || s.contains("perubahan tekanan") || s.contains("pressure change") || s.contains("tekanan diferensial")) return 3;
+        if (s.contains("kelemb") || s.contains("humidity") || s.equals("rh") || s.contains("relative humidity")) return 1;
+        if (s.contains("suhu") || s.contains("temperature") || s.contains("temp udara") || s.equals("temp")) return 0;
+        if (s.contains("arah angin") || s.contains("wind direction") || s.contains("wind dir")) return 11;
+        if (s.contains("kecepatan angin") || s.contains("wind speed") || s.contains("windspeed")) return 10;
+        if (s.contains("curah hujan") || s.contains("rainfall") || s.contains("precipitation") || s.contains("hujan (mm)")) return 12;
+        if (s.contains("hujan") || s.contains("rain")) return 13;
+        if (s.contains("par") || s.contains("ppfd")) return 6;
+        if (s.contains("vpd") || s.contains("defisit tekanan uap")) return 7;
+        if (s.contains("tekanan") || s.contains("pressure") || s.contains("barometer")) return 2;
+        if (s.contains("altitude") || s.contains("mdpl") || s.contains("elevasi") || s.contains("ketinggian")) return 4;
+        if (s.contains("lux") || s.contains("cahaya") || s.contains("light") || s.contains("illuminance")) return 5;
+        if (s.contains("durasi sinar") || s.contains("sunshine") || s.contains("lama penyinaran")) return 8;
+        if (s.equals("et0") || s.contains("evapotransp")) return 9;
+        return PARAM_CUSTOM;
+    }
+
+    private int displayedParameterType(int slot, int field) {
+        int chosen = explicitFieldType(slot, field);
+        if (chosen >= 0 && chosen < PARAM_LABELS.length) return chosen;
+        if (chosen == PARAM_CUSTOM) return PARAM_CUSTOM;
+        String manual = manualFieldName(slot, field);
+        if (!manual.isEmpty()) return inferParameterType(manual);
+        String meta = metadataFieldName(slot, field);
+        if (!meta.isEmpty()) return inferParameterType(meta);
+        return DEFAULT_PARAM_BY_FIELD[field];
+    }
+
+    private String fieldIcon(int slot, int field) {
+        int type = displayedParameterType(slot, field);
+        return type >= 0 && type < PARAM_ICONS.length ? PARAM_ICONS[type] : "✎";
+    }
+
+    private void updateFieldPresentation(int slot, int field) {
+        labelViews[field].setText(fieldName(slot, field));
+        unitViews[field].setText(fieldUnit(slot, field));
+        int parameterType = displayedParameterType(slot, field);
+        String icon = fieldIcon(slot, field);
+        if (parameterType == 13) {
+            String currentValue = valueViews[field].getText().toString().trim().toLowerCase(Locale.ROOT);
+            if (!currentValue.isEmpty() && !currentValue.equals("--")) {
+                boolean statusKnown = false;
+                boolean noRain = false;
+                if (currentValue.contains("tidak") || currentValue.equals("false") || currentValue.equals("no rain") || currentValue.equals("kering")) {
+                    noRain = true;
+                    statusKnown = true;
+                } else if (currentValue.equals("true") || currentValue.contains("hujan") || currentValue.contains("rain")) {
+                    statusKnown = true;
+                } else {
+                    try { noRain = Double.parseDouble(currentValue.replace(',', '.')) == 0.0; statusKnown = true; }
+                    catch (NumberFormatException ignored) { }
+                }
+                if (statusKnown) icon = noRain ? "☀️" : "🌧️";
+            }
+        }
+        iconViews[field].setText(icon);
+        iconViews[field].setTextSize((parameterType == 6 || parameterType == 7 || parameterType == 8 || parameterType == 9) ? 17 : 25);
+        iconViews[field].setContentDescription("Ikon " + fieldName(slot, field) + ". Ketuk untuk memilih parameter.");
     }
 
     private void updateClock() {
@@ -428,10 +538,14 @@ public class MainActivity extends Activity {
         for (int i = 0; i < 8; i++) {
             String k = "field" + (i + 1);
             String raw = feed.optString(k, "").trim();
-            if (raw.isEmpty() || raw.equalsIgnoreCase("null")) raw = "--"; else present++;
+            if (raw.isEmpty() || raw.equalsIgnoreCase("null")) raw = "--";
+            boolean manualEnabled = prefs.getBoolean(profileKey(slot, "f" + i + "_manual_enabled"), false);
+            if (manualEnabled) raw = prefs.getString(profileKey(slot, "f" + i + "_manual_value"), raw);
+            if (!raw.isEmpty() && !raw.equals("--") && !raw.equalsIgnoreCase("null")) present++;
             valueViews[i].setText(raw);
-            labelViews[i].setText(fieldName(slot, i));
-            unitViews[i].setText(fieldUnit(slot, i));
+            valueViews[i].setTextColor(manualEnabled ? 0xFFF3B64A : Color.WHITE);
+            valueViews[i].setContentDescription((manualEnabled ? "Nilai manual: " : "Nilai ThingSpeak: ") + raw + ". Ketuk untuk mengubah.");
+            updateFieldPresentation(slot, i);
         }
         fieldStatus.setText(present + "/8");
         fieldStatus.setTextColor(present > 0 ? 0xFF45D483 : 0xFFFF6B6B);
@@ -489,7 +603,12 @@ public class MainActivity extends Activity {
         updateHeader();
         if (cached != null) applyFeed(cached, slot);
         else {
-            for (int i = 0; i < 8; i++) { valueViews[i].setText("--"); labelViews[i].setText(fieldName(slot, i)); unitViews[i].setText(fieldUnit(slot, i)); }
+            for (int i = 0; i < 8; i++) {
+                boolean manualEnabled = prefs.getBoolean(profileKey(slot, "f" + i + "_manual_enabled"), false);
+                valueViews[i].setText(manualEnabled ? prefs.getString(profileKey(slot, "f" + i + "_manual_value"), "--") : "--");
+                valueViews[i].setTextColor(manualEnabled ? 0xFFF3B64A : Color.WHITE);
+                updateFieldPresentation(slot, i);
+            }
             dataTime.setText("Belum ada data ThingSpeak");
         }
     }
@@ -531,27 +650,219 @@ public class MainActivity extends Activity {
     private void showCsvDialog() {
         int slot = activeSlot();
         if (idFor(slot).isEmpty()) { showStatus("CHANNEL BELUM DIATUR", 0xFFF3B64A, "Isi Channel ID pada Pengaturan dahulu."); openSettings(); return; }
-        LinearLayout box = new LinearLayout(this); box.setOrientation(LinearLayout.VERTICAL); box.setPadding(dp(18), dp(6), dp(18), 0);
-        TextView description = text("Unduh feed CSV ThingSpeak untuk rentang waktu tertentu atau seluruh histori channel aktif.", 12, 0xFF9DB0BC, false);
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setPadding(dp(18), dp(6), dp(18), 0);
+        TextView description = text("Pilih rentang tanggal untuk mengunduh histori CSV ThingSpeak. Ketuk tanggal mulai dan tanggal selesai untuk membuka kalender.", 12, 0xFF9DB0BC, false);
         box.addView(description);
-        EditText start = edit("Mulai: YYYY-MM-DDTHH:MM:SS", InputType.TYPE_CLASS_TEXT);
-        EditText end = edit("Selesai: YYYY-MM-DDTHH:MM:SS", InputType.TYPE_CLASS_TEXT);
-        box.addView(start); box.addView(end);
-        CheckBox all = new CheckBox(this); all.setText("UNDUH SEMUA HISTORY"); all.setTextColor(Color.WHITE); all.setChecked(true); all.setButtonTintList(android.content.res.ColorStateList.valueOf(0xFF29C6C7));
-        all.setOnCheckedChangeListener((button, checked) -> { start.setEnabled(!checked); end.setEnabled(!checked); });
-        start.setEnabled(false); end.setEnabled(false);
+
+        final LocalDate[] selectedDates = {LocalDate.now(WIB).minusDays(7), LocalDate.now(WIB)};
+        final TextView[] dateButtons = new TextView[2];
+        dateButtons[0] = dateControl("TANGGAL MULAI · " + formatCalendarDate(selectedDates[0]));
+        dateButtons[1] = dateControl("TANGGAL SELESAI · " + formatCalendarDate(selectedDates[1]));
+        dateButtons[0].setOnClickListener(v -> chooseCsvDate(selectedDates, 0, dateButtons[0]));
+        dateButtons[1].setOnClickListener(v -> chooseCsvDate(selectedDates, 1, dateButtons[1]));
+        box.addView(dateButtons[0]);
+        box.addView(dateButtons[1]);
+
+        CheckBox all = new CheckBox(this);
+        all.setText("UNDUH SEMUA HISTORY");
+        all.setTextColor(Color.WHITE);
+        all.setChecked(false);
+        all.setButtonTintList(android.content.res.ColorStateList.valueOf(0xFF29C6C7));
+        all.setOnCheckedChangeListener((button, checked) -> {
+            dateButtons[0].setEnabled(!checked);
+            dateButtons[1].setEnabled(!checked);
+            dateButtons[0].setAlpha(checked ? 0.45f : 1f);
+            dateButtons[1].setAlpha(checked ? 0.45f : 1f);
+        });
+        // Rentang tanggal aktif secara default; centang semua histori untuk menonaktifkannya.
         box.addView(all);
-        new AlertDialog.Builder(this).setTitle("UNDUH HISTORY / CSV").setView(box)
-                .setPositiveButton("PILIH FILE & UNDUH", (d, which) -> {
-                    if (!all.isChecked() && (start.getText().toString().trim().isEmpty() || end.getText().toString().trim().isEmpty())) {
-                        Toast.makeText(this, "Isi waktu mulai dan selesai atau pilih semua history.", Toast.LENGTH_LONG).show(); return;
-                    }
-                    pendingCsvStart = start.getText().toString().trim(); pendingCsvEnd = end.getText().toString().trim(); pendingCsvAll = all.isChecked();
-                    pendingCsvProfile = activeSlot(); pendingCsvChannel = idFor(pendingCsvProfile); pendingCsvKey = readKeyFor(pendingCsvProfile);
-                    Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT); intent.addCategory(Intent.CATEGORY_OPENABLE); intent.setType("text/csv");
-                    intent.putExtra(Intent.EXTRA_TITLE, "stasiun_cuaca_" + pendingCsvChannel + "_history.csv");
-                    startActivityForResult(intent, REQUEST_CREATE_CSV);
-                }).setNegativeButton("BATAL", null).show();
+
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle("UNDUH HISTORY / CSV")
+                .setView(box)
+                .setPositiveButton("PILIH FILE & UNDUH", null)
+                .setNegativeButton("BATAL", null)
+                .create();
+        dialog.setOnShowListener(ignored -> dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
+            if (!all.isChecked() && selectedDates[0].isAfter(selectedDates[1])) {
+                Toast.makeText(this, "Tanggal mulai tidak boleh melewati tanggal selesai.", Toast.LENGTH_LONG).show();
+                return;
+            }
+            pendingCsvStart = all.isChecked() ? "" : selectedDates[0].format(DateTimeFormatter.ofPattern("yyyy-MM-dd", Locale.US)) + " 00:00:00";
+            pendingCsvEnd = all.isChecked() ? "" : selectedDates[1].format(DateTimeFormatter.ofPattern("yyyy-MM-dd", Locale.US)) + " 23:59:59";
+            pendingCsvAll = all.isChecked();
+            pendingCsvProfile = activeSlot();
+            pendingCsvChannel = idFor(pendingCsvProfile);
+            pendingCsvKey = readKeyFor(pendingCsvProfile);
+            dialog.dismiss();
+            Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
+            intent.addCategory(Intent.CATEGORY_OPENABLE);
+            intent.setType("text/csv");
+            String csvName = "stasiun_cuaca_" + pendingCsvChannel + "_history.csv";
+            if (!pendingCsvAll) {
+                String startStamp = pendingCsvStart.substring(0, 10).replace("-", "");
+                String endStamp = pendingCsvEnd.substring(0, 10).replace("-", "");
+                csvName = "stasiun_cuaca_" + pendingCsvChannel + "_" + startStamp + "-" + endStamp + ".csv";
+            }
+            intent.putExtra(Intent.EXTRA_TITLE, csvName);
+            startActivityForResult(intent, REQUEST_CREATE_CSV);
+        }));
+        dialog.show();
+    }
+
+    private TextView dateControl(String value) {
+        TextView control = text(value, 12, 0xFFF4F7F9, true);
+        control.setGravity(Gravity.CENTER_VERTICAL);
+        control.setPadding(dp(12), 0, dp(12), 0);
+        control.setBackgroundResource(R.drawable.bg_edit);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, dp(46));
+        lp.topMargin = dp(6);
+        lp.bottomMargin = dp(5);
+        control.setLayoutParams(lp);
+        return control;
+    }
+
+    private String formatCalendarDate(LocalDate date) {
+        return date.format(DateTimeFormatter.ofPattern("dd MMM yyyy", new Locale("id", "ID")));
+    }
+
+    private void chooseCsvDate(LocalDate[] selectedDates, int index, TextView button) {
+        LocalDate existing = selectedDates[index];
+        DatePickerDialog picker = new DatePickerDialog(this, (view, year, month, day) -> {
+            selectedDates[index] = LocalDate.of(year, month + 1, day);
+            button.setText((index == 0 ? "TANGGAL MULAI · " : "TANGGAL SELESAI · ") + formatCalendarDate(selectedDates[index]));
+        }, existing.getYear(), existing.getMonthValue() - 1, existing.getDayOfMonth());
+        picker.show();
+    }
+
+    private void startFieldSelection(int slot, int field, int type) {
+        SharedPreferences.Editor editor = prefs.edit();
+        String nameKey = profileKey(slot, "f" + field + "_name");
+        String unitKey = profileKey(slot, "f" + field + "_unit");
+        String typeKey = profileKey(slot, "f" + field + "_type");
+        if (type == PARAM_CUSTOM) {
+            // Keep the current title/unit as a starting point for editing a custom parameter.
+            String currentName = fieldName(slot, field);
+            String currentUnit = fieldUnit(slot, field);
+            String savedName = manualFieldName(slot, field);
+            if (!savedName.isEmpty()) currentName = savedName;
+            String savedUnit = prefs.getString(unitKey, "").trim();
+            if (!savedUnit.isEmpty()) currentUnit = savedUnit;
+            showCustomParameterDialog(slot, field, currentName, currentUnit);
+            return;
+        }
+        if (type < 0 || type >= PARAM_LABELS.length) return;
+        editor.putInt(typeKey, type).remove(nameKey).remove(unitKey).apply();
+        updateHeader();
+        loadCachedData(slot);
+        Toast.makeText(this, PARAM_LABELS[type] + " · satuan " + (PARAM_UNITS[type].isEmpty() ? "tanpa satuan" : PARAM_UNITS[type]), Toast.LENGTH_SHORT).show();
+    }
+
+    private void chooseFieldParameter(int field) {
+        int slot = activeSlot();
+        String[] choices = new String[PARAM_LABELS.length + 1];
+        for (int i = 0; i < PARAM_LABELS.length; i++) {
+            choices[i] = PARAM_ICONS[i] + "  " + PARAM_LABELS[i] + (PARAM_UNITS[i].isEmpty() ? "" : "  (" + PARAM_UNITS[i] + ")");
+        }
+        choices[PARAM_LABELS.length] = "✎  MANUAL / KUSTOM (isi nama dan satuan sendiri)";
+        int current = displayedParameterType(slot, field);
+        if (current < 0 || current >= PARAM_LABELS.length) current = PARAM_LABELS.length;
+        new AlertDialog.Builder(this)
+                .setTitle("PILIH PARAMETER · FIELD " + (field + 1))
+                .setSingleChoiceItems(choices, current, (dialog, which) -> {
+                    dialog.dismiss();
+                    startFieldSelection(slot, field, which == PARAM_LABELS.length ? PARAM_CUSTOM : which);
+                })
+                .setNegativeButton("BATAL", null)
+                .show();
+    }
+
+    private void showCustomParameterDialog(int slot, int field, String currentName, String currentUnit) {
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setPadding(dp(18), dp(4), dp(18), 0);
+        EditText name = edit("Nama parameter, misalnya suhu tanah", InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_SENTENCES);
+        name.setText(currentName);
+        EditText unit = edit("Satuan, misalnya °C atau kPa", InputType.TYPE_CLASS_TEXT);
+        unit.setText(currentUnit);
+        box.addView(name);
+        box.addView(unit);
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle("PARAMETER MANUAL · FIELD " + (field + 1))
+                .setMessage("Nama dan satuan ini akan ditampilkan di dashboard. Ketuk nilai pada kartu untuk memasukkan angka manual.")
+                .setView(box)
+                .setPositiveButton("SIMPAN", null)
+                .setNegativeButton("BATAL", null)
+                .create();
+        dialog.setOnShowListener(ignored -> dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
+            String n = name.getText().toString().trim();
+            String u = unit.getText().toString().trim();
+            if (n.isEmpty()) {
+                name.setError("Nama parameter harus diisi");
+                return;
+            }
+            prefs.edit()
+                    .putInt(profileKey(slot, "f" + field + "_type"), PARAM_CUSTOM)
+                    .putString(profileKey(slot, "f" + field + "_name"), n)
+                    .putString(profileKey(slot, "f" + field + "_unit"), u)
+                    .apply();
+            dialog.dismiss();
+            updateHeader();
+            loadCachedData(slot);
+        }));
+        dialog.show();
+    }
+
+    private void showManualValueDialog(int field) {
+        int slot = activeSlot();
+        String baseKey = profileKey(slot, "f" + field + "_manual_");
+        boolean wasManual = prefs.getBoolean(baseKey + "enabled", false);
+        String initial = wasManual ? prefs.getString(baseKey + "value", "") : valueViews[field].getText().toString();
+        if ("--".equals(initial)) initial = "";
+        EditText value = edit("Nilai " + fieldUnit(slot, field), InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL | InputType.TYPE_NUMBER_FLAG_SIGNED);
+        value.setText(initial);
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setPadding(dp(18), dp(4), dp(18), 0);
+        box.addView(text("FIELD " + (field + 1) + " · " + fieldName(slot, field) + " (" + (fieldUnit(slot, field).isEmpty() ? "tanpa satuan" : fieldUnit(slot, field)) + ")", 12, 0xFF9DB0BC, true));
+        box.addView(value);
+        box.addView(text("Nilai manual menggantikan tampilan live untuk field ini pada perangkat ini. Tekan KEMBALI LIVE untuk memakai data ThingSpeak lagi.", 11, 0xFF9DB0BC, false));
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle("INPUT NILAI MANUAL")
+                .setView(box)
+                .setPositiveButton("SIMPAN MANUAL", null)
+                .setNegativeButton("KEMBALI LIVE", null)
+                .setNeutralButton("BATAL", null)
+                .create();
+        dialog.setOnShowListener(ignored -> {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
+                String number = value.getText().toString().trim().replace(',', '.');
+                if (number.isEmpty()) {
+                    value.setError("Masukkan nilai");
+                    return;
+                }
+                try {
+                    double parsed = Double.parseDouble(number);
+                    if (!Double.isFinite(parsed)) { value.setError("Nilai harus berupa angka terbatas"); return; }
+                } catch (NumberFormatException ex) { value.setError("Nilai harus berupa angka"); return; }
+                prefs.edit().putBoolean(baseKey + "enabled", true).putString(baseKey + "value", number).apply();
+                valueViews[field].setText(number);
+                valueViews[field].setTextColor(0xFFF3B64A);
+                valueViews[field].setContentDescription("Nilai manual: " + number + ". Ketuk untuk mengubah atau kembali ke data live.");
+                showStatus("NILAI MANUAL", 0xFFF3B64A, "Field " + (field + 1) + " memakai nilai manual di perangkat ini.");
+                dialog.dismiss();
+            });
+            dialog.getButton(AlertDialog.BUTTON_NEGATIVE).setOnClickListener(v -> {
+                prefs.edit().putBoolean(baseKey + "enabled", false).remove(baseKey + "value").apply();
+                JSONObject feed = cachedFeed(slot);
+                if (feed != null) applyFeed(feed, slot);
+                else { valueViews[field].setText("--"); valueViews[field].setTextColor(Color.WHITE); }
+                dialog.dismiss();
+            });
+        });
+        dialog.show();
     }
 
     @Override protected void onActivityResult(int requestCode, int resultCode, Intent data) {
@@ -575,7 +886,7 @@ public class MainActivity extends Activity {
         boolean headerWritten = false;
         while (true) {
             String url = "https://api.thingspeak.com/channels/" + enc(channelId) + "/feeds.json?results=" + pageSize + "&offset=" + offset + "&timezone=Asia%2FJakarta";
-            if (!all) url += "&start=" + enc(start) + "&end=" + enc(end);
+            if (!all) url += "&start=" + enc(start).replace("+", "%20") + "&end=" + enc(end).replace("+", "%20");
             if (!key.isEmpty()) url += "&api_key=" + enc(key);
             JSONObject obj;
             try (InputStream in = openStream(url, 12000, 25000)) { obj = new JSONObject(readAll(in)); }

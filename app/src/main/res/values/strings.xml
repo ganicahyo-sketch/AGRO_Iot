@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">AGRO-IoT</string>
-    <string name="app_version">3.0.0</string>
+    <string name="app_version">3.1.1</string>
     <string name="app_credit">ganicahyo@2026</string>
-    <string name="app_about">AGRO-IoT · Versi 3.0.0 · ganicahyo@2026</string>
+    <string name="app_about">AGRO-IoT · Versi 3.1.1 · ganicahyo@2026</string>
 </resources>

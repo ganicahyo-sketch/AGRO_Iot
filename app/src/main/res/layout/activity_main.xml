@@ -59,7 +59,8 @@
                 </LinearLayout>
             </LinearLayout>
 
-            <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="11dp" android:layout_marginBottom="2dp" android:text="DATA PENGUKURAN" android:textColor="@color/cyan" android:textStyle="bold" android:textSize="10sp" android:letterSpacing="0.14"/>
+            <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="11dp" android:layout_marginBottom="1dp" android:text="DATA PENGUKURAN" android:textColor="@color/cyan" android:textStyle="bold" android:textSize="10sp" android:letterSpacing="0.14"/>
+            <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginBottom="2dp" android:text="Ketuk ikon/judul untuk pilih parameter · ketuk angka untuk input manual" android:textColor="@color/muted" android:textSize="9sp"/>
             <GridLayout android:id="@+id/grid" android:layout_width="match_parent" android:layout_height="wrap_content" android:columnCount="2" android:useDefaultMargins="false"/>
 
             <!-- Weather and heat summary -->
@@ -108,7 +109,7 @@
             </LinearLayout>
 
             <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="5dp" android:paddingTop="5dp" android:paddingBottom="7dp" android:orientation="vertical" android:gravity="center">
-                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="AGRO-IoT  •  VERSI 3.0.0" android:textColor="@color/cyan" android:textStyle="bold" android:textSize="10sp" android:letterSpacing="0.08"/>
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="AGRO-IoT  •  VERSI 3.1.1" android:textColor="@color/cyan" android:textStyle="bold" android:textSize="10sp" android:letterSpacing="0.08"/>
                 <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="2dp" android:text="ganicahyo@2026" android:textColor="@color/muted" android:textSize="10sp"/>
             </LinearLayout>
         </LinearLayout>

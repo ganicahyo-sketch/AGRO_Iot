@@ -28,8 +28,8 @@ public class SettingsActivity extends Activity {
     private static final String PREFS = "thingspeak_config";
     private static final int PROFILE_COUNT = 5;
     private static final String[] DEFAULT_LABELS = {
-            "SUHU UDARA", "KELEMBABAN UDARA", "TEKANAN UDARA", "ALTITUDE",
-            "INTENSITAS CAHAYA", "PAR", "VPD", "DURASI SINAR MATAHARI"
+            "SUHU UDARA", "KELEMBAPAN UDARA", "TEKANAN UDARA", "ALTITUDE",
+            "INTENSITAS CAHAYA", "PAR", "VPD", "LAMA PENYINARAN MATAHARI"
     };
     private static final String[] DEFAULT_UNITS = {"°C", "%", "hPa", "mdpl", "lux", "µmol/m²/s", "kPa", "jam"};
     private SharedPreferences prefs;
@@ -90,7 +90,7 @@ public class SettingsActivity extends Activity {
         LinearLayout about = panel();
         about.setGravity(Gravity.CENTER);
         about.addView(text("AGRO-IoT", 15, 0xFF29C6C7, true));
-        about.addView(text("Versi 3.0.0", 11, 0xFFF4F7F9, true), margin(0, 4, 0, 0));
+        about.addView(text("Versi 3.1.1", 11, 0xFFF4F7F9, true), margin(0, 4, 0, 0));
         about.addView(text("ganicahyo@2026", 11, 0xFF9DB0BC, false), margin(0, 3, 0, 0));
         root.addView(about, margin(0, 16, 0, 4));
         return scroll;
@@ -122,8 +122,9 @@ public class SettingsActivity extends Activity {
         keyToggles[slot].setOnClickListener(v -> toggleKey(idx));
         box.addView(keyRow, margin(0, 4, 0, 10));
 
-        TextView fieldsLabel = text("NAMA FIELD & SATUAN (KOSONG = OTOMATIS / DEFAULT)", 10, 0xFF9DB0BC, true);
+        TextView fieldsLabel = text("NAMA FIELD & SATUAN MANUAL (OPSIONAL)", 10, 0xFF9DB0BC, true);
         box.addView(fieldsLabel, margin(0, 0, 0, 2));
+        box.addView(text("Untuk memilih parameter standar beserta ikon dan satuannya, kembali ke dashboard lalu ketuk ikon atau judul kartu field. Isian di bawah ini dipakai untuk parameter kustom.", 10, 0xFF9DB0BC, false), margin(0, 0, 0, 5));
         for (int f = 0; f < 8; f++) {
             LinearLayout row = new LinearLayout(this);
             row.setGravity(Gravity.CENTER_VERTICAL);
@@ -170,8 +171,18 @@ public class SettingsActivity extends Activity {
             e.putString(key(i, "id"), channelIds[i].getText().toString().trim());
             e.putString(key(i, "key"), readKeys[i].getText().toString().trim());
             for (int f = 0; f < 8; f++) {
-                e.putString(key(i, "f" + f + "_name"), fieldNames[i][f].getText().toString().trim());
-                e.putString(key(i, "f" + f + "_unit"), fieldUnits[i][f].getText().toString().trim());
+                String fieldName = fieldNames[i][f].getText().toString().trim();
+                String fieldUnit = fieldUnits[i][f].getText().toString().trim();
+                String typeKey = key(i, "f" + f + "_type");
+                e.putString(key(i, "f" + f + "_name"), fieldName);
+                e.putString(key(i, "f" + f + "_unit"), fieldUnit);
+                if (!fieldName.isEmpty() || !fieldUnit.isEmpty()) {
+                    // Isian manual berarti pengguna menghendaki parameter kustom.
+                    e.putInt(typeKey, -1);
+                } else if (prefs.getInt(typeKey, -2) == -1) {
+                    // Kosongkan override kustom; parameter kembali ke metadata/default.
+                    e.remove(typeKey);
+                }
             }
         }
         e.apply();
