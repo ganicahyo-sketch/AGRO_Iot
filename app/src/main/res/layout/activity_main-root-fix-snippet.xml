@@ -1,2 +1,0 @@
-<!-- Replace the opening root tag's incorrect android:id with this attribute. -->
-android:id="@+id/root"
